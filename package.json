@@ -1,0 +1,21 @@
+{
+	"name": "umami-db-job",
+	"scripts": {
+		"dbpull": "drizzle-kit pull",
+		"start": "tsx src/index.ts",
+		"build": "pkgroll"
+	},
+	"exports": "./dist/index.mjs",
+	"dependencies": {
+		"@types/pg": "^8.11.10",
+		"date-fns": "^4.1.0",
+		"dotenv": "^16.4.7",
+		"drizzle-orm": "^0.38.3",
+		"pg": "^8.13.1"
+	},
+	"devDependencies": {
+		"drizzle-kit": "^0.30.1",
+		"pkgroll": "^2.6.1",
+		"tsx": "^4.19.2"
+	}
+}
