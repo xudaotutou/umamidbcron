@@ -1,61 +1,93 @@
 import { startOfToday, startOfYesterday } from 'date-fns';
 import 'dotenv/config';
-import { and, asc, between, eq, isNotNull } from 'drizzle-orm';
-import { db } from './db';
-import { eventData, websiteEvent } from './db/schema';
-
-// 提取公共查询条件
-const getCommonQueryConditions = () => and(
-  eq(eventData.dataKey, 'userUid'),
-  isNotNull(eventData.stringValue),
-  between(eventData.createdAt, startOfYesterday(), startOfToday())
-);
-
-// 提取公共查询结构
-const getEventListQuery = (eventName: string) => db
-  .selectDistinctOn([eventData.stringValue], {
-    eventData: eventData.eventDataId,
-    userUid: eventData.stringValue,
+import { and, asc, between, eq, inArray, isNotNull } from 'drizzle-orm';
+import { db as biDb } from './db/bi';
+import { UserLoginInfo, UserSignUpInfo } from './db/bi/schema';
+import { db } from './db/umami';
+import { eventData, website, websiteEvent } from './db/umami/schema';
+const getDailyEvent = () => {
+  const websiteIds = process.env.WEBSITE_IDS?.split(',') || []
+  return db
+  .select({
+    eventId: websiteEvent.eventId,
     createdAt: websiteEvent.createdAt,
+    eventName: websiteEvent.eventName,
+    websiteDomain: website.domain
   })
-  .from(eventData)
-  .innerJoin(
-    db
-      .select({
-        eventId: websiteEvent.eventId,
-        createdAt: websiteEvent.createdAt,
-        eventName: websiteEvent.eventName
-      })
-      .from(websiteEvent)
-      .where(
-        and(
-          between(websiteEvent.createdAt, startOfYesterday(), startOfToday()),
-          eq(websiteEvent.eventType, 2)
-        )
-      )
-      .as('dailyEvent'),
+  .from(websiteEvent)
+  .where(
     and(
-      eq(eventData.websiteEventId, websiteEvent.eventId),
-      eq(websiteEvent.eventName, eventName)
+      between(websiteEvent.createdAt, startOfYesterday(), startOfToday()),
+      eq(websiteEvent.eventType, 2),
+      inArray(websiteEvent.websiteId, websiteIds)
     )
   )
-  .where(getCommonQueryConditions())
-  .orderBy(asc(websiteEvent.createdAt));
-
+  .leftJoin(website,
+    eq(website.websiteId, websiteEvent.websiteId)
+  )
+  .as('dailyEvent')}
+  
+const getCommonQueryConditions = () => and(
+  eq(eventData.dataKey, 'userId'),
+  isNotNull(eventData.stringValue),
+  between(eventData.createdAt, startOfYesterday(), startOfToday()),
+);
+const getEventListQuery = (eventName: string) => {
+  const dailyEventDb = getDailyEvent()
+  return db
+    .selectDistinctOn([eventData.stringValue], {
+      eventData: eventData.eventDataId,
+      eventId: eventData.websiteEventId,
+      userId: eventData.stringValue,
+      createdAt: eventData.createdAt,
+      domain: dailyEventDb.websiteDomain
+    })
+    .from(eventData)
+    .innerJoin(
+      dailyEventDb,
+      and(
+        eq(eventData.websiteEventId, dailyEventDb.eventId),
+        eq(dailyEventDb.eventName, eventName),
+        isNotNull(dailyEventDb.createdAt)
+      )
+    )
+    .where(getCommonQueryConditions())
+    .orderBy(asc(eventData.stringValue), asc(eventData.createdAt));
+}
 async function main() {
   try {
-    const [dailyLoginList, signUpList] = await db.transaction(async tx => {
-      const dailyLoginQuery = getEventListQuery('dailyLoginFirst');
-      const signUpQuery = getEventListQuery('signUp');
-      
-      return Promise.all([
-        dailyLoginQuery.execute(),
-        signUpQuery.execute()
-      ]);
-    });
+    const dailyLoginList = await getEventListQuery('dailyLoginFirst');
+    const signUpList = await getEventListQuery('signUp');
 
-    console.log('Daily login:', dailyLoginList);
-    console.log('Daily signup:', signUpList);
+    // console.log('Daily login:', dailyLoginList);
+    // console.log('Daily signup:', signUpList);
+
+    // 批量插入登录信息
+    if (dailyLoginList.length > 0) {
+      const result = await biDb.insert(UserLoginInfo).values(
+        dailyLoginList.map(login => ({
+          userId: login.userId!,
+          eventId: login.eventId,
+          dailyUsedAt: login.createdAt!,
+          domain: login.domain!
+        }))
+      ).onConflictDoNothing()
+      console.log(result)
+    }
+
+
+    // 批量插入注册信息
+    if (signUpList.length > 0) {
+      const result = await biDb.insert(UserSignUpInfo).values(
+        signUpList.map(signup => ({
+          userId: signup.userId!,
+          signUpAt: signup.createdAt!,
+          eventId: signup.eventId,
+          domain: signup.domain!,
+        }))
+      ).onConflictDoNothing();
+      console.log(result)
+    }
   } catch (error) {
     console.error('Fatal error:', error);
     process.exit(1);

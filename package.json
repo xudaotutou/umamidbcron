@@ -1,9 +1,10 @@
 {
 	"name": "umami-db-job",
 	"scripts": {
-		"dbpull": "drizzle-kit pull",
-		"start": "tsx src/index.ts",
-		"build": "pkgroll"
+    "start": "tsx src/index.ts",
+		"build": "pkgroll",
+    "start:prod": "node ./dist/index.mjs",
+    "release": "pnpm i && pnpm build && pnpm build && pnpm prune --prod  && pnpm i --prod && pnpm store prune"
 	},
 	"exports": "./dist/index.mjs",
 	"dependencies": {
@@ -14,6 +15,7 @@
 		"pg": "^8.13.1"
 	},
 	"devDependencies": {
+		"@types/node": "^22.10.7",
 		"drizzle-kit": "^0.30.1",
 		"pkgroll": "^2.6.1",
 		"tsx": "^4.19.2"
