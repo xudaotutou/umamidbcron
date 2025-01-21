@@ -1,4 +1,4 @@
-import { startOfToday, startOfYesterday } from 'date-fns';
+import { endOfToday, startOfToday, startOfYesterday } from 'date-fns';
 import 'dotenv/config';
 import { and, asc, between, eq, inArray, isNotNull } from 'drizzle-orm';
 import { db as biDb } from './db/bi';
@@ -17,7 +17,7 @@ const getDailyEvent = () => {
   .from(websiteEvent)
   .where(
     and(
-      between(websiteEvent.createdAt, startOfYesterday(), startOfToday()),
+      between(websiteEvent.createdAt, startOfYesterday(), endOfToday()),
       eq(websiteEvent.eventType, 2),
       inArray(websiteEvent.websiteId, websiteIds)
     )
@@ -56,11 +56,12 @@ const getEventListQuery = (eventName: string) => {
 }
 async function main() {
   try {
+    console.log('start pull')
     const dailyLoginList = await getEventListQuery('dailyLoginFirst');
     const signUpList = await getEventListQuery('signUp');
 
-    // console.log('Daily login:', dailyLoginList);
-    // console.log('Daily signup:', signUpList);
+    console.log('Daily login:', dailyLoginList.length);
+    console.log('Daily signup:', signUpList.length);
 
     // 批量插入登录信息
     if (dailyLoginList.length > 0) {
